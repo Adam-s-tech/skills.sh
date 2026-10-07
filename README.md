@@ -227,6 +227,9 @@ Remove installed skills from agents.
 # Remove interactively (select from installed skills)
 npx skills remove
 
+# Remove all skills from an exact lock source
+npx skills remove owner/repo
+
 # Remove specific skill by name
 npx skills remove web-design-guidelines
 
