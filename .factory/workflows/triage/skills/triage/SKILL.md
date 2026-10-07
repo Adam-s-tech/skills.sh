@@ -61,7 +61,7 @@ This workflow cannot execute tests, inspect arbitrary repository files, read PR 
 verify commit signatures, or establish merge readiness. Do not claim reproduction, independent
 verification, signed commits, complete review, or passing checks beyond the evidence returned
 by the declared tools. A clear patch with a sound regression test may qualify while CI is
-pending; disclose that status in the handoff.
+pending; record that status only in internal output.
 
 ## Label and hand off once
 
@@ -69,22 +69,22 @@ Before writing, reread the triggering PR. Stop if it closed, its head changed, a
 label appeared, or `triage:bug-fix` is now present.
 
 Draft the comment before writing. Use exactly this Markdown structure, with a blank line
-between the opening sentence and the three bullets. Replace the placeholders; do not include
+between the opening sentence and the two bullets. Replace the placeholders; do not include
 code-fence or blockquote markers in the published comment:
 
 ```markdown
 @quuu — bug-fix candidate.
 
-- **Fix:** <user-visible failure corrected, one short sentence>.
-- **Tests:** <regression behavior covered; name at most one test file>.
-- **CI:** <observed current-head status or unavailable> (head `<8-character SHA>`).
+- **Bug:** <previous incorrect behavior in plain language>.
+- **Fix:** <corrected behavior in plain language>.
 ```
 
 The entire comment must be at most 500 characters and 75 words, including Markdown. Check
 both limits and the blank line before publishing; shorten the draft if necessary. Use plain
 language. Omit function names, code excerpts, full test names, full commit hashes, repeated
-caveats, and explanations of the implementation mechanism. Keep detailed reasoning, the full
-assessed SHA, and delivery results in the internal workflow output. The public comment is a
+caveats, test details, CI status, and explanations of the implementation mechanism. Keep
+regression evidence, verification limitations, detailed reasoning, the full assessed SHA, and
+delivery results in the internal workflow output. The public comment is a
 maintainer handoff; the opening calls it a candidate and does not imply merge approval.
 
 Use `add_label` once to add `triage:bug-fix`. Only after confirmed label success, use `comment`
