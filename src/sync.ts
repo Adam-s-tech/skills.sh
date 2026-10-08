@@ -32,6 +32,7 @@ import {
 import type { Skill, AgentType } from './types.ts';
 import { track } from './telemetry.ts';
 import { detectAgent, getAgentType } from './detect-agent.ts';
+import { getLastSelectedAgents, saveSelectedAgents } from './skill-lock.ts';
 import { parseSkillsField } from './skills-field.ts';
 
 const isCancelled = (value: unknown): value is symbol => typeof value === 'symbol';
@@ -392,6 +393,39 @@ async function resolveConflicts(
   return { install, skipped };
 }
 
+/**
+ * Ask which agents to sync to, with universal agents always included.
+ * Preselects the last choice from `skills add` or sync when it is still offered.
+ */
+async function promptForAgentChoice(
+  choices: AgentType[],
+  fallback: AgentType[]
+): Promise<AgentType[] | symbol> {
+  const universalAgents = getUniversalAgents();
+  const visibleUniversalAgents = getVisibleUniversalAgents();
+  const last = await getLastSelectedAgents().catch(() => undefined);
+  const remembered = choices.filter((a) => last?.includes(a));
+
+  const selected = await searchMultiselect({
+    message: 'Which agents do you want to install to?',
+    items: choices.map((a) => ({
+      value: a,
+      label: agents[a].displayName,
+      hint: agents[a].skillsDir,
+    })),
+    initialSelected: remembered.length > 0 ? remembered : fallback,
+    lockedSection: {
+      title: 'Universal (.agents/skills)',
+      items: visibleUniversalAgents.map((a) => ({ value: a, label: agents[a].displayName })),
+      hiddenCount: universalAgents.length - visibleUniversalAgents.length,
+    },
+  });
+  if (!isCancelled(selected)) {
+    await saveSelectedAgents(selected as string[]).catch(() => {});
+  }
+  return selected as AgentType[] | symbol;
+}
+
 export async function runSync(args: string[], options: SyncOptions = {}): Promise<void> {
   const cwd = process.cwd();
 
@@ -477,7 +511,6 @@ export async function runSync(args: string[], options: SyncOptions = {}): Promis
   let targetAgents: AgentType[];
   const validAgents = Object.keys(agents);
   const universalAgents = getUniversalAgents();
-  const visibleUniversalAgents = getVisibleUniversalAgents();
 
   if (options.agent?.includes('*')) {
     targetAgents = validAgents as AgentType[];
@@ -496,40 +529,9 @@ export async function runSync(args: string[], options: SyncOptions = {}): Promis
     const totalAgents = Object.keys(agents).length;
     spinner.stop(`${totalAgents} agents`);
 
-    if (installedAgents.length === 0) {
-      if (options.yes) {
-        targetAgents = universalAgents;
-        p.log.info('Installing to universal agents');
-      } else {
-        const otherAgents = getNonUniversalAgents();
-
-        const otherChoices = otherAgents.map((a) => ({
-          value: a,
-          label: agents[a].displayName,
-          hint: agents[a].skillsDir,
-        }));
-
-        const selected = await searchMultiselect({
-          message: 'Which agents do you want to install to?',
-          items: otherChoices,
-          initialSelected: [],
-          lockedSection: {
-            title: 'Universal (.agents/skills)',
-            items: visibleUniversalAgents.map((a) => ({
-              value: a,
-              label: agents[a].displayName,
-            })),
-            hiddenCount: universalAgents.length - visibleUniversalAgents.length,
-          },
-        });
-
-        if (isCancelled(selected)) {
-          p.cancel('Sync cancelled');
-          process.exit(0);
-        }
-
-        targetAgents = selected as AgentType[];
-      }
+    if (installedAgents.length === 0 && options.yes) {
+      targetAgents = universalAgents;
+      p.log.info('Installing to universal agents');
     } else if (installedAgents.length === 1 || options.yes) {
       // Ensure universal agents are included
       targetAgents = [...installedAgents];
@@ -539,34 +541,19 @@ export async function runSync(args: string[], options: SyncOptions = {}): Promis
         }
       }
     } else {
-      const otherAgents = getNonUniversalAgents().filter((a) => installedAgents.includes(a));
-
-      const otherChoices = otherAgents.map((a) => ({
-        value: a,
-        label: agents[a].displayName,
-        hint: agents[a].skillsDir,
-      }));
-
-      const selected = await searchMultiselect({
-        message: 'Which agents do you want to install to?',
-        items: otherChoices,
-        initialSelected: installedAgents.filter((a) => !universalAgents.includes(a)),
-        lockedSection: {
-          title: 'Universal (.agents/skills)',
-          items: visibleUniversalAgents.map((a) => ({
-            value: a,
-            label: agents[a].displayName,
-          })),
-          hiddenCount: universalAgents.length - visibleUniversalAgents.length,
-        },
-      });
-
+      // No detected agents: offer all; several: offer the detected ones
+      const choices = getNonUniversalAgents().filter(
+        (a) => installedAgents.length === 0 || installedAgents.includes(a)
+      );
+      const selected = await promptForAgentChoice(
+        choices,
+        installedAgents.filter((a) => !universalAgents.includes(a))
+      );
       if (isCancelled(selected)) {
         p.cancel('Sync cancelled');
         process.exit(0);
       }
-
-      targetAgents = selected as AgentType[];
+      targetAgents = selected;
     }
   }
 
